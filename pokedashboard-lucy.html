@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscador chido Pokémon</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: white;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .contenedor {
+            max-width: 850px;
+            margin: auto;
+            padding: 20px;
+            background-color: #2B2B2B;
+            border-radius: 8px;
+        }
+
+        h1, h2 { text-align: center; }
+
+        .buscador {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        input {
+            flex: 1;
+            min-width: 0;
+            padding: 10px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 10px 15px;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:disabled { opacity: .6; }
+
+        #mensaje { text-align: center; min-height: 20px; }
+        .error { color: red; }
+        .exito { color: green; }
+        .oculto { display: none; }
+
+        .tarjeta {
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 6px;
+        }
+
+        .datos {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .datos img {
+            width: 130px;
+            height: 130px;
+            object-fit: contain;
+            image-rendering: pixelated;
+        }
+
+        #descripcion { line-height: 1.5; }
+
+        /* Diagrama sencillo de evoluciones */
+        .diagrama {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .grupo-evolucion {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            min-width: 115px;
+        }
+
+        .pokemon-evolucion img {
+            width: 100px;
+            height: 100px;
+            object-fit: contain;
+            image-rendering: pixelated;
+        }
+
+        .pokemon-evolucion p {
+            margin: 2px;
+            text-transform: capitalize;
+        }
+
+        .flecha {
+            font-size: 25px;
+            font-weight: bold;
+        }
+
+        .flecha-mega {
+            font-size: 22px;
+            line-height: 1.2;
+            margin-top: 4px;
+        }
+
+        .pokemon-mega {
+            margin-top: 2px;
+            padding-top: 4px;
+            border-top: 1px dashed #999;
+        }
+
+        .pokemon-mega img {
+            width: 85px;
+            height: 85px;
+            object-fit: contain;
+            image-rendering: pixelated;
+        }
+
+        .pokemon-mega p {
+            margin: 0;
+            font-size: 14px;
+            text-transform: capitalize;
+        }
+
+        .nota-mega {
+            text-align: center;
+            width: 100%;
+        }
+
+        @media (max-width: 500px) {
+            body { padding: 8px; }
+            .contenedor { padding: 12px; }
+            .buscador { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <main class="contenedor">
+        <h1>Buscador de Pokémon</h1>
+        <p>Escribe el nombre o número de un Pokémon para buscarlo.</p>
+
+        <form id="form-buscar" class="buscador">
+            <input type="text" id="inp-search"
+                   placeholder="Ej. pikachu o 25" required>
+            <button type="submit" id="btn-buscar">Buscar</button>
+        </form>
+
+        <p id="mensaje"></p>
+
+        <section id="resultado" class="tarjeta oculto">
+            <h2>Información del Pokémon</h2>
+            <div class="datos">
+                <img id="pokemon-sprite" src="" alt="Sprite del Pokémon">
+                <div>
+                    <h3 id="pokemon-nombre"></h3>
+                    <p id="pokemon-id"></p>
+                </div>
+            </div>
+
+            <h2>Descripción</h2>
+            <p id="descripcion"></p>
+
+            <h2>Cadena evolutiva</h2>
+            <div id="diagrama-evoluciones" class="diagrama"></div>
+            <p id="mensaje-megas" class="nota-mega"></p>
+        </section>
+    </main>
+
+    <script>
+        // Laura Lucia Jaramillo Yah - 68636
+        // ITS
+
+        // aqui se guarda la direccion de la API
+        const API = 'https://pokeapi.co/api/v2';
+
+        function init() {
+            document.querySelector('#form-buscar')
+                .addEventListener('submit', buscarPokemon);
+        }
+
+        // consultar informacion en la API
+        async function consultarAPI(url) {
+            let respuesta = await fetch(url);
+
+            if (!respuesta.ok) {
+                throw new Error('No se encontro ese pokemon');
+            }
+
+            return await respuesta.json();
+        }
+
+        // buscar la descripcion en español
+        function obtenerDescripcion(datosEspecie) {
+            let textos = datosEspecie.flavor_text_entries;
+
+            let descripcion = textos.find(
+                texto => texto.language.name == 'es'
+            );
+
+            if (descripcion == undefined) {
+                return 'No hay descripcion en español para este pokemon.';
+            }
+
+            return descripcion.flavor_text
+                .replace(/[\n\f\r]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        // obtener los nombres de todas las evoluciones
+        function obtenerEvoluciones(etapa, lista = []) {
+            lista.push(etapa.species.name);
+
+            etapa.evolves_to.forEach(evolucion => {
+                obtenerEvoluciones(evolucion, lista);
+            });
+
+            return lista;
+        }
+
+        // crear el cuadro de un pokemon dentro del diagrama
+        async function crearPokemon(nombre, contenedor, esMega = false) {
+            let datos = await consultarAPI(`${API}/pokemon/${nombre}/`);
+
+            let tarjeta = document.createElement('div');
+            tarjeta.className = esMega ? 'pokemon-mega' : 'pokemon-evolucion';
+
+            let imagen = document.createElement('img');
+            // Se usa el sprite pixel art de la API.
+            imagen.src = datos.sprites.front_default || '';
+            imagen.alt = datos.name;
+
+            let texto = document.createElement('p');
+            texto.textContent = datos.name;
+
+            tarjeta.append(imagen, texto);
+            contenedor.appendChild(tarjeta);
+        }
+
+        // mostrar la cadena y colocar cada mega debajo de su pokemon
+        async function mostrarEvoluciones(datosEspecie) {
+            let idCadena = datosEspecie.evolution_chain.url
+                .split('/')
+                .filter(Boolean)
+                .pop();
+
+            let datosCadena = await consultarAPI(
+                `${API}/evolution-chain/${idCadena}/`
+            );
+
+            let nombres = obtenerEvoluciones(datosCadena.chain);
+            let diagrama = document.querySelector('#diagrama-evoluciones');
+            let mensaje = document.querySelector('#mensaje-megas');
+            diagrama.innerHTML = '';
+            mensaje.textContent = '';
+
+            // Buscar las formas mega registradas en PokéAPI.
+            let listaPokemon = await consultarAPI(
+                `${API}/pokemon?limit=2000`
+            );
+
+            let nombresMega = listaPokemon.results
+                .map(pokemon => pokemon.name)
+                .filter(nombre => nombre.includes('-mega'));
+
+            let hayMega = false;
+
+            for (let i = 0; i < nombres.length; i++) {
+                let nombreBase = nombres[i];
+
+                // Cada etapa tiene su propio espacio en el diagrama.
+                let grupo = document.createElement('div');
+                grupo.className = 'grupo-evolucion';
+
+                await crearPokemon(nombreBase, grupo);
+
+                // Las Megaevoluciones salen desde el Pokémon correspondiente.
+                let megasDeEstePokemon = nombresMega.filter(
+                    nombreMega => nombreMega.startsWith(nombreBase + '-mega')
+                );
+
+                for (let nombreMega of megasDeEstePokemon) {
+                    hayMega = true;
+
+                    let flechaMega = document.createElement('div');
+                    flechaMega.className = 'flecha-mega';
+                    flechaMega.textContent = '↓';
+                    grupo.appendChild(flechaMega);
+
+                    await crearPokemon(nombreMega, grupo, true);
+                }
+
+                diagrama.appendChild(grupo);
+
+                // Flecha que conecta con la siguiente evolución.
+                if (i < nombres.length - 1) {
+                    let flecha = document.createElement('span');
+                    flecha.className = 'flecha';
+                    flecha.textContent = '→';
+                    diagrama.appendChild(flecha);
+                }
+            }
+
+            if (!hayMega) {
+                mensaje.textContent =
+                    'No se encontraron Megaevoluciones para esta cadena.';
+            }
+        }
+
+        // buscar el pokemon escrito por el usuario
+        async function buscarPokemon(evento) {
+            evento.preventDefault();
+
+            let campo = document.querySelector('#inp-search');
+            let nombre = campo.value.trim().toLowerCase();
+            let boton = document.querySelector('#btn-buscar');
+            let resultado = document.querySelector('#resultado');
+            let mensaje = document.querySelector('#mensaje');
+
+            if (nombre == '') {
+                mensaje.textContent = 'Escribe un nombre o numero.';
+                mensaje.className = 'error';
+                return;
+            }
+
+            boton.disabled = true;
+            boton.textContent = 'Buscando...';
+            resultado.classList.add('oculto');
+            mensaje.textContent = 'Buscando pokemon...';
+            mensaje.className = '';
+
+            try {
+                // primera solicitud: informacion del pokemon
+                let datos = await consultarAPI(
+                    `${API}/pokemon/${encodeURIComponent(nombre)}/`
+                );
+
+                document.querySelector('#pokemon-id').textContent =
+                    'ID: ' + datos.id;
+
+                document.querySelector('#pokemon-nombre').textContent =
+                    datos.name;
+
+                let imagen = document.querySelector('#pokemon-sprite');
+                imagen.src = datos.sprites.front_default || '';
+                imagen.alt = datos.name;
+
+                // segunda solicitud: especie y descripcion
+                let idEspecie = datos.species.url
+                    .split('/')
+                    .filter(Boolean)
+                    .pop();
+
+                let especie = await consultarAPI(
+                    `${API}/pokemon-species/${idEspecie}/`
+                );
+
+                document.querySelector('#descripcion').textContent =
+                    obtenerDescripcion(especie);
+
+                // mostrar la cadena evolutiva y sus Megaevoluciones
+                await mostrarEvoluciones(especie);
+
+                resultado.classList.remove('oculto');
+                mensaje.textContent = 'Pokemon encontrado.';
+                mensaje.className = 'exito';
+
+            } catch (error) {
+                console.log(error);
+                mensaje.textContent =
+                    'No se encontro el pokemon o no hay conexion.';
+                mensaje.className = 'error';
+            } finally {
+                boton.disabled = false;
+                boton.textContent = 'Buscar';
+            }
+        }
+
+        // iniciar cuando cargue la pagina
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
